@@ -11,7 +11,7 @@ export function NavLink({ href, exact, children }: { href: string; exact?: boole
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap no-underline hover:bg-panel aria-[current=page]:bg-ink aria-[current=page]:text-paper"
+      className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-medium whitespace-nowrap no-underline hover:border-rule aria-[current=page]:border-ink aria-[current=page]:font-semibold"
     >
       {children}
     </Link>

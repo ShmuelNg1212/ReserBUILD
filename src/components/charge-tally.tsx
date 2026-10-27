@@ -1,4 +1,5 @@
-import { formatPeso, formatRange } from "@/lib/format";
+import { formatRange } from "@/lib/format";
+import { formatPeso } from "@/server/money";
 import { cx } from "./ui";
 
 type Line = { segmentStart: Date; segmentEnd: Date; hours: string; rateApplied: string; amount: string; isPeak: boolean };

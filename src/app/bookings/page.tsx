@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, buttonClass, Section, SpaceMark } from "@/components/ui";
-import { formatDay, formatPeso, formatRange, formatWhen, STATUS } from "@/lib/format";
+import { formatDay, formatRange, formatWhen, STATUS } from "@/lib/format";
+import { formatPeso } from "@/server/money";
 import { requireActor } from "@/lib/session";
 import { getDb } from "@/server/db";
 import { listMyReservations } from "@/server/reservations";

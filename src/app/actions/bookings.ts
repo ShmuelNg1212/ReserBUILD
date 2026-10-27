@@ -56,8 +56,9 @@ export async function cancelBookingAction(_: ActionState, form: FormData): Promi
   } catch (e) {
     return failure(e);
   }
+  // The cancel form leaves the page, so the page's own cancelled notice is the feedback.
   refresh(id);
-  return { ok: "Booking cancelled." };
+  redirect(`/bookings/${id}`);
 }
 
 export async function checkInAction(_: ActionState, form: FormData): Promise<ActionState> {

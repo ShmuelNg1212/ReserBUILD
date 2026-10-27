@@ -1,8 +1,5 @@
-import type { ReservationStatus } from "@/server/db/schema";
-import { formatPeso } from "@/server/money";
+import type { DayOfWeek, Payment, ReservationStatus } from "@/server/db/schema";
 import { formatLocal, localParts } from "@/server/time";
-
-export { formatPeso };
 
 export const formatDay = (d: Date) => formatLocal(d, { weekday: "short", day: "numeric", month: "short" });
 export const formatDayLong = (d: Date) => formatLocal(d, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -11,7 +8,6 @@ export const formatRange = (a: Date, b: Date) => `${formatTime(a)}–${formatTim
 export const formatWhen = (d: Date) => `${formatDay(d)} ${formatTime(d)}`;
 
 export const minutesToClock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-export const clockToMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
 export const todayLocal = () => localParts(new Date()).date;
 
@@ -24,9 +20,9 @@ export const STATUS: Record<ReservationStatus, { label: string; tone: "neutral" 
   no_show: { label: "No-show", tone: "neutral" },
 };
 
-export const METHOD: Record<string, string> = { cash: "Cash", e_wallet: "E-wallet", bank_transfer: "Bank transfer" };
+export const METHOD: Record<Payment["method"], string> = { cash: "Cash", e_wallet: "E-wallet", bank_transfer: "Bank transfer" };
 
-export const DAY_LABEL: Record<string, string> = {
+export const DAY_LABEL: Record<DayOfWeek, string> = {
   mon: "Monday",
   tue: "Tuesday",
   wed: "Wednesday",

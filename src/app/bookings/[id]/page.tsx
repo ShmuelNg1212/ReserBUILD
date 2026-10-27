@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { recordPaymentAction, rejectPaymentAction, setOutcomeAction, verifyPaymentAction, voidPaymentAction } from "@/app/actions/admin";
+import {
+  recordPaymentAction,
+  rejectPaymentAction,
+  setOutcomeAction,
+  verifyPaymentAction,
+  voidPaymentAction,
+} from "@/app/actions/admin";
 import {
   addParticipantAction,
   cancelBookingAction,
@@ -13,14 +19,20 @@ import {
 import { ActionForm } from "@/components/action-form";
 import { ChargeTally } from "@/components/charge-tally";
 import { Badge, Field, Input, Notice, Section, Select } from "@/components/ui";
-import { formatDayLong, formatPeso, formatRange, formatWhen, METHOD, STATUS } from "@/lib/format";
+import { formatDayLong, formatRange, formatWhen, METHOD, STATUS } from "@/lib/format";
+import { formatPeso } from "@/server/money";
 import { PAYMENT_ACCOUNTS } from "@/lib/payment-info";
 import { requireActor } from "@/lib/session";
 import { getDb } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { getReservationDetail, RULES } from "@/server/reservations";
+import { isRejected, paymentLabel } from "@/server/payments";
+import { CANCELLED_UNCHECKED_NOTE, cancelPolicy, checkInWindow, getReservationDetail } from "@/server/reservations";
 
 export const metadata: Metadata = { title: "Booking" };
+
+// The staff note on a payment voided by a cancel, said to the user instead.
+const USER_UNCHECKED_NOTE =
+  "Cancelled before staff checked this payment. If the money arrived, the facility office will refund it.";
 
 export default async function BookingPage({ params, searchParams }: PageProps<"/bookings/[id]">) {
   const actor = await requireActor();
@@ -33,18 +45,20 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
     if (e instanceof AppError && e.code === "NOT_FOUND") notFound();
     throw e;
   }
-  const { reservation: r, space, owner, charges, payments, participants, balance } = d;
+  const { reservation: r, space, owner, charges, payments, participants, balance, balanceCents } = d;
   const staff = actor.role === "admin";
   const now = new Date();
   const waiting = payments.find((p) => p.status === "pending");
-  const lastRejected = [...payments].reverse().find((p) => p.status === "voided" && p.note && !p.paidAt);
-  const canPay = r.status === "pending" && !waiting && !!r.paymentDueAt && now < r.paymentDueAt && balance !== "0.00";
-  const checkInOpens = new Date(r.startAt.getTime() - RULES.checkInEarlyMinutes * 60_000);
-  const canCheckIn = r.status === "confirmed" && now >= checkInOpens && now < r.endAt;
-  const moneyIn = payments.some((p) => p.status === "pending" || p.status === "paid");
-  const canCancel = (r.status === "pending" || r.status === "confirmed") && now < r.startAt && (staff || !moneyIn);
+  const lastRejected = [...payments].reverse().find(isRejected);
+  const canPay = r.status === "pending" && !waiting && !!r.paymentDueAt && now < r.paymentDueAt && balanceCents > 0;
+  const { opens: checkInOpens, closes: checkInCloses } = checkInWindow(r);
+  const canCheckIn = r.status === "confirmed" && now >= checkInOpens && now < checkInCloses;
+  const cancel = cancelPolicy(r, payments, actor.role, now);
+  const canCancel = cancel.allowed;
   const ended = now >= r.endAt;
-  const status = STATUS[r.status];
+  // One status for the user: a pending booking whose payment staff are checking says so.
+  const status =
+    r.status === "pending" && waiting ? { label: "Payment being checked", tone: "warn" as const } : STATUS[r.status];
   const hid = <input type="hidden" name="id" value={r.reservationId} />;
 
   return (
@@ -54,9 +68,11 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       </Link>
 
       <div className="grid gap-3">
-        {isNew && r.status === "pending" && <Notice tone="ok">Booked. The time is held for you until the payment deadline.</Notice>}
         <div className="flex items-start gap-4 rounded-lg bg-ink p-4 text-paper">
-          <span className="grid size-14 shrink-0 place-items-center rounded-md bg-paper text-2xl font-bold text-ink" aria-hidden>
+          <span
+            className="grid size-14 shrink-0 place-items-center rounded-md bg-paper text-2xl font-bold text-ink"
+            aria-hidden
+          >
             {space.code}
           </span>
           <div className="min-w-0 flex-1">
@@ -83,7 +99,14 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         <ChargeTally charges={charges} total={r.totalAmount} />
       </Section>
 
-      <Section title="Payment" action={<span className="text-sm">Balance {formatPeso(r.status === "cancelled" ? "0" : balance)}</span>}>
+      <Section
+        title="Payment"
+        action={
+          <span className="text-sm">
+            {r.status === "cancelled" ? "Nothing to pay" : `Balance ${formatPeso(balance)}`}
+          </span>
+        }
+      >
         {payments.length > 0 && (
           <ul className="divide-y divide-rule text-sm">
             {payments.map((p) => (
@@ -92,14 +115,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                   <span className="font-semibold">{formatPeso(p.amount)}</span>
                   <span>{METHOD[p.method]}</span>
                   {p.referenceNo && <span className="text-graphite">Ref {p.referenceNo}</span>}
-                  <Badge tone={p.status === "paid" ? "ok" : p.status === "pending" ? "warn" : "danger"}>
-                    {p.status === "paid" ? "Paid" : p.status === "pending" ? "Being checked" : p.paidAt ? "Voided" : "Rejected"}
-                  </Badge>
+                  <Badge tone={paymentLabel(p).tone}>{paymentLabel(p).label}</Badge>
                 </div>
                 <p className="text-graphite">
                   {p.submittedAt && `Sent ${formatWhen(p.submittedAt)}`}
                   {p.paidAt && ` · confirmed ${formatWhen(p.paidAt)} by ${p.receivedBy}`}
-                  {p.note && ` · ${p.note}`}
+                  {p.note && ` · ${!staff && p.note === CANCELLED_UNCHECKED_NOTE ? USER_UNCHECKED_NOTE : p.note}`}
                 </p>
                 {staff && p.status === "pending" && (
                   <div className="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-end">
@@ -107,7 +128,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                       {hid}
                       <input type="hidden" name="paymentId" value={p.paymentId} />
                     </ActionForm>
-                    <ActionForm action={rejectPaymentAction} submit="Reject" variant="danger" className="sm:grid-cols-[1fr_auto] sm:items-end">
+                    <ActionForm
+                      action={rejectPaymentAction}
+                      submit="Reject"
+                      variant="danger"
+                      className="sm:grid-cols-[1fr_auto] sm:items-end"
+                    >
                       {hid}
                       <input type="hidden" name="paymentId" value={p.paymentId} />
                       <Field label="Reason for the user" htmlFor={`reject-${p.paymentId}`}>
@@ -135,7 +161,9 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
         {canPay && !staff && (
           <div className="grid gap-3">
-            {lastRejected && <Notice tone="danger">Your last payment was rejected: {lastRejected.note}. Send it again.</Notice>}
+            {lastRejected && (
+              <Notice tone="danger">Your last payment was rejected: {lastRejected.note}. Send it again.</Notice>
+            )}
             {PAYMENT_ACCOUNTS.length > 0 ? (
               <ul className="text-sm">
                 {PAYMENT_ACCOUNTS.map((a) => (
@@ -145,7 +173,10 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 ))}
               </ul>
             ) : (
-              <Notice>Get the facility office&apos;s e-wallet or bank account from the office, then send {formatPeso(balance)}.</Notice>
+              <Notice>
+                Get the facility office&apos;s e-wallet or bank account from the office, then send {formatPeso(balance)}
+                .
+              </Notice>
             )}
             <ActionForm action={submitPaymentAction} submit={`I paid ${formatPeso(balance)}`} busy="Sending…">
               {hid}
@@ -165,7 +196,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         )}
         {payments.length === 0 && !canPay && <p className="text-sm text-graphite">No payments.</p>}
 
-        {staff && r.status !== "cancelled" && balance !== "0.00" && (
+        {staff && r.status !== "cancelled" && balanceCents > 0 && (
           <details className="text-sm">
             <summary className="cursor-pointer py-1 underline">Record a payment at the office</summary>
             <ActionForm action={recordPaymentAction} submit="Record payment" className="mt-2">
@@ -201,7 +232,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                   </p>
                   <p className="text-graphite">{[p.email, p.affiliation].filter(Boolean).join(" · ")}</p>
                 </div>
-                <ActionForm action={setAttendedAction} submit={p.attended ? "Attended" : "Mark attended"} variant={p.attended ? "primary" : "secondary"} busy="Saving…">
+                <ActionForm
+                  action={setAttendedAction}
+                  submit={p.attended ? "Attended" : "Mark attended"}
+                  variant={p.attended ? "primary" : "secondary"}
+                  busy="Saving…"
+                >
                   {hid}
                   <input type="hidden" name="participantId" value={p.participantId} />
                   <input type="hidden" name="attended" value={String(!p.attended)} />
@@ -254,12 +290,16 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               <summary className="cursor-pointer py-1 text-danger underline">Cancel this booking</summary>
               <ActionForm action={cancelBookingAction} submit="Cancel booking" variant="danger" className="mt-2">
                 {hid}
-                {moneyIn ? (
+                {cancel.allowed && cancel.needsRefundNote ? (
                   <Field label="How was the payment refunded?" htmlFor="note" hint="Required. The user sees this.">
                     <Input id="note" name="note" required />
                   </Field>
                 ) : (
-                  <p className="text-graphite">The time is freed for others. This cannot be undone.</p>
+                  <p className="text-graphite">
+                    The time is freed for others. This cannot be undone.
+                    {waiting &&
+                      " Your payment that staff have not checked yet will be refunded by the facility office if it arrived."}
+                  </p>
                 )}
               </ActionForm>
             </details>
@@ -270,18 +310,36 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   );
 
   function NextStep() {
-    if (r.status === "cancelled") return <Notice tone="danger">Cancelled {r.cancelledAt && formatWhen(r.cancelledAt)}{r.cancelReason ? `: ${r.cancelReason}` : "."}</Notice>;
-    if (r.status === "pending" && waiting) return <Notice tone="warn">Staff are checking your payment (ref {waiting.referenceNo}). The time stays held meanwhile.</Notice>;
+    if (r.status === "cancelled")
+      return (
+        <Notice tone="danger">
+          Cancelled {r.cancelledAt && formatWhen(r.cancelledAt)}
+          {r.cancelReason ? `: ${r.cancelReason}` : "."}
+        </Notice>
+      );
+    if (r.status === "pending" && waiting)
+      return (
+        <Notice tone="warn">
+          Staff are checking your payment (ref {waiting.referenceNo}). The time stays held meanwhile.
+        </Notice>
+      );
     if (r.status === "pending" && r.paymentDueAt)
-      return <Notice tone="warn">Pay {formatPeso(balance)} by <strong>{formatWhen(r.paymentDueAt)}</strong>, or the booking is cancelled.</Notice>;
+      return (
+        <Notice tone="warn">
+          {isNew && "Booked. "}Pay {formatPeso(balance)} by <strong>{formatWhen(r.paymentDueAt)}</strong> to keep this
+          time, or the booking is cancelled.
+        </Notice>
+      );
     if (canCheckIn)
       return (
         <ActionForm action={checkInAction} submit="Check in now" busy="Checking in…">
           {hid}
         </ActionForm>
       );
-    if (r.status === "confirmed") return <Notice tone="ok">Paid and confirmed. Check-in opens {formatWhen(checkInOpens)}.</Notice>;
-    if (r.status === "checked_in") return <Notice tone="ok">Checked in {r.checkedInAt && formatWhen(r.checkedInAt)}.</Notice>;
+    if (r.status === "confirmed")
+      return <Notice tone="ok">Paid and confirmed. Check-in opens {formatWhen(checkInOpens)}.</Notice>;
+    if (r.status === "checked_in")
+      return <Notice tone="ok">Checked in {r.checkedInAt && formatWhen(r.checkedInAt)}.</Notice>;
     return null;
   }
 }

@@ -35,9 +35,14 @@ export async function AppHeader() {
         )}
         {actor && (
           <form action={signOutAction} className="ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden text-graphite sm:inline">
-              {actor.name}
-              {actor.role === "admin" && " · Staff"}
+            <span className="text-graphite">
+              <span className="sm:hidden" aria-hidden>
+                {actor.name.split(" ").map((w) => w[0]).join("")}
+              </span>
+              <span className="sr-only sm:not-sr-only">
+                {actor.name}
+                {actor.role === "admin" && " · Staff"}
+              </span>
             </span>
             <button className="min-h-11 rounded-lg px-2 font-medium underline hover:bg-panel">Sign out</button>
           </form>

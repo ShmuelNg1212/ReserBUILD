@@ -3,7 +3,8 @@ import Link from "next/link";
 import { rejectPaymentAction, verifyPaymentAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { Field, Input, Notice, SpaceMark } from "@/components/ui";
-import { formatDay, formatPeso, formatRange, formatWhen, METHOD } from "@/lib/format";
+import { formatDay, formatRange, formatWhen, METHOD } from "@/lib/format";
+import { formatPeso } from "@/server/money";
 import { requireActor } from "@/lib/session";
 import { listPendingPayments } from "@/server/admin";
 import { getDb } from "@/server/db";
@@ -54,6 +55,7 @@ export default async function PaymentsQueue({ searchParams }: PageProps<"/admin"
                   Ref <span className="font-medium text-ink">{r.payment.referenceNo}</span> · sent{" "}
                   {r.payment.submittedAt && formatWhen(r.payment.submittedAt)}
                 </p>
+                {r.paymentDueAt && <p className="text-graphite">Booking pay-by {formatWhen(r.paymentDueAt)}</p>}
               </div>
               <div className="flex flex-wrap items-start gap-2">
                 <ActionForm action={verifyPaymentAction} submit="Verify" busy="Verifying…">

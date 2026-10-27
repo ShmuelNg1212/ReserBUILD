@@ -4,10 +4,11 @@ import { createBookingAction } from "@/app/actions/bookings";
 import { ActionForm } from "@/components/action-form";
 import { ChargeTally } from "@/components/charge-tally";
 import { Field, Notice, SpaceMark, Textarea } from "@/components/ui";
-import { loadDay, payBy } from "@/lib/availability";
 import { formatDayLong, formatWhen } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { getDb } from "@/server/db";
+import { loadDay } from "@/server/availability";
+import { paymentDueAt } from "@/server/reservations";
 import { atLocal } from "@/server/time";
 
 export const metadata: Metadata = { title: "Review booking" };
@@ -19,7 +20,8 @@ export default async function ReviewPage({ searchParams }: PageProps<"/book/revi
   const sel = { date: s("date"), start: s("start"), end: s("end"), people: Math.max(1, Number(q.people) || 1) };
   const back = `/book?${new URLSearchParams({ ...sel, people: String(sel.people), space: s("space") })}`;
 
-  const days = /^\d{4}-\d{2}-\d{2}$/.test(sel.date) ? await loadDay(getDb(), actor, sel, sel.date) : [];
+  const slot = { date: sel.date, startTime: sel.start, endTime: sel.end, headcount: sel.people };
+  const days = /^\d{4}-\d{2}-\d{2}$/.test(sel.date) ? await loadDay(getDb(), actor, sel.date, slot) : [];
   const day = days.find((d) => d.space.code === s("space"));
 
   if (!day?.quote) {
@@ -51,8 +53,9 @@ export default async function ReviewPage({ searchParams }: PageProps<"/book/revi
       <ChargeTally charges={day.quote.charges} total={day.quote.total} />
 
       <Notice tone="warn">
-        Pay by <strong>{formatWhen(payBy(sel))}</strong>, or the booking is cancelled and the space is freed. You pay
-        by e-wallet or bank transfer and enter the reference number; staff then confirm it.
+        Pay by <strong>{formatWhen(paymentDueAt(new Date(), atLocal(sel.date, sel.start)))}</strong>, or the booking is
+        cancelled and the space is freed. You pay by e-wallet or bank transfer and enter the reference number; staff
+        then confirm it.
       </Notice>
 
       <ActionForm action={createBookingAction} submit={`Book and hold this time`} busy="Booking…">
@@ -61,7 +64,11 @@ export default async function ReviewPage({ searchParams }: PageProps<"/book/revi
         <input type="hidden" name="startTime" value={sel.start} />
         <input type="hidden" name="endTime" value={sel.end} />
         <input type="hidden" name="headcount" value={sel.people} />
-        <Field label="What is the booking for?" htmlFor="purpose" hint="Staff see this. For example: thesis group meeting.">
+        <Field
+          label="What is the booking for?"
+          htmlFor="purpose"
+          hint="Staff see this. For example: thesis group meeting."
+        >
           <Textarea id="purpose" name="purpose" rows={2} maxLength={500} required />
         </Field>
       </ActionForm>
