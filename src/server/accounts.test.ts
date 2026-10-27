@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeUser, setupTestDb } from "@/test/db";
 import { getActorForToken, requireRole, signIn, signOut, signUp } from "./accounts";
+import { signInFailures } from "./db/schema";
 import { AppError } from "./errors";
 
 const { db } = setupTestDb();
@@ -69,6 +70,42 @@ describe("accounts", () => {
     const second = await signIn(db, student.email, student.password);
     await signOut(db, second.token);
     expect(await getActorForToken(db, second.token)).toBeNull();
+  });
+
+  it("locks an email after 5 failed sign-ins in 15 minutes, even with the right password", async () => {
+    await signUp(db, student);
+    const t0 = new Date("2026-11-02T00:00:00Z");
+    const at = (min: number) => new Date(t0.getTime() + min * 60_000);
+    for (let i = 0; i < 5; i++) {
+      expect(await errorCode(signIn(db, student.email, "wrong password", at(i)))).toBe("INVALID_CREDENTIALS");
+    }
+    expect(await errorCode(signIn(db, student.email, student.password, at(5)))).toBe("TOO_MANY_ATTEMPTS");
+    // Other emails are not affected.
+    expect(await errorCode(signIn(db, "nobody@school.edu", "x", at(5)))).toBe("INVALID_CREDENTIALS");
+    // The oldest failure leaves the window after 15 minutes.
+    expect((await signIn(db, student.email, student.password, at(15.5))).token).toBeTruthy();
+  });
+
+  it("clears failed sign-ins after a successful one", async () => {
+    await signUp(db, student);
+    const now = new Date("2026-11-02T00:00:00Z");
+    for (let i = 0; i < 4; i++) await errorCode(signIn(db, student.email, "wrong password", now));
+    await signIn(db, student.email, student.password, now);
+    for (let i = 0; i < 4; i++) await errorCode(signIn(db, student.email, "wrong password", now));
+    expect((await signIn(db, student.email, student.password, now)).token).toBeTruthy();
+  });
+
+  it("counts failures for unknown emails too", async () => {
+    const now = new Date("2026-11-02T00:00:00Z");
+    for (let i = 0; i < 5; i++) await errorCode(signIn(db, "Nobody@School.edu", "x", now));
+    expect(await errorCode(signIn(db, "nobody@school.edu", "x", now))).toBe("TOO_MANY_ATTEMPTS");
+  });
+
+  it("prunes expired failures on the next failure", async () => {
+    const now = new Date("2026-11-02T00:00:00Z");
+    for (let i = 0; i < 3; i++) await errorCode(signIn(db, `ghost${i}@school.edu`, "x", now));
+    await errorCode(signIn(db, "late@school.edu", "x", new Date(now.getTime() + 16 * 60_000)));
+    expect(await db.select().from(signInFailures)).toHaveLength(1);
   });
 
   it("ignores a forged token", async () => {
