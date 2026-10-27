@@ -7,10 +7,13 @@
   --color-paper: #ffffff;
   --color-panel: #f6f6f4;
   --color-ink: #1c1c1c;
+  --color-ink-hover: #333333;
   --color-graphite: #5c5c58;
   --color-rule: #e4e4e0;
   --color-shade: #ececea;
   --color-shade-ink: #5f5f5b;
+  --color-rule-taken: #d2d2ce;
+  --color-off-peak: #a9a9a4;
   --color-closed: #f5f5f3;
   --color-danger: #a8231b;
   --color-danger-bg: #fbeceb;

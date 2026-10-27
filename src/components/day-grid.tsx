@@ -77,7 +77,7 @@ export function DayGrid({ days, from, to, selection, selectedCode, hrefFor }: Pr
             {peakStarts.map((m) => (
               <span
                 key={`p${m}`}
-                className="absolute right-2.5 mt-4 text-[10px] font-semibold tracking-wide text-ink uppercase"
+                className="absolute right-2.5 mt-4 text-[11px] font-semibold tracking-wide text-ink uppercase"
                 style={{ top: top(m) }}
               >
                 Peak
@@ -139,7 +139,7 @@ export function DayGrid({ days, from, to, selection, selectedCode, hrefFor }: Pr
                     key={b.startMinutes}
                     className={cx(
                       "pointer-events-none absolute inset-x-1 rounded-sm border px-1 py-0.5 text-[11px] leading-tight",
-                      b.mine ? "border-ink bg-paper font-semibold" : "border-[#d2d2ce] bg-shade text-shade-ink",
+                      b.mine ? "border-ink bg-paper font-semibold" : "border-rule-taken bg-shade text-shade-ink",
                     )}
                     style={{ top: top(b.startMinutes) + 1, height: height(b.startMinutes, b.endMinutes) - 2 }}
                   >

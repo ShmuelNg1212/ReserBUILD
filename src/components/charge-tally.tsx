@@ -14,7 +14,7 @@ export function ChargeTally({ charges, total, totalLabel = "Total" }: { charges:
         {charges.map((c) => (
           <span
             key={c.segmentStart.getTime()}
-            className={cx("block", c.isPeak ? "bg-ink" : "bg-[#a9a9a4]")}
+            className={cx("block", c.isPeak ? "bg-ink" : "bg-off-peak")}
             style={{ flexGrow: minutes(c) }}
           />
         ))}
