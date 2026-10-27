@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../src/server/auth";
 import { createDb } from "../src/server/db";
-import { spaces, users } from "../src/server/db/schema";
+import { signInFailures, spaces, users } from "../src/server/db/schema";
 import { insertCatalog } from "./catalog.mjs";
 
 config({ path: ".env.local", quiet: true });
@@ -34,6 +35,12 @@ if (email) {
       passwordHash: await hashPassword(password),
     });
     console.log(`Bootstrap: created admin ${email}.`);
+  } else if (process.env.ADMIN_RESET_PASSWORD === "true") {
+    // Recovery: there is no password reset in the app. Unset the flag after one deploy.
+    await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.userId, found.id));
+    await db.delete(signInFailures).where(eq(signInFailures.email, email));
+    const fingerprint = createHash("sha256").update(password).digest("hex").slice(0, 8);
+    console.log(`Bootstrap: reset password for ${email} (fingerprint ${fingerprint}).`);
   }
 }
 
