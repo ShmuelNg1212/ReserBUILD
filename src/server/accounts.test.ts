@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeUser, setupTestDb } from "@/test/db";
 import { getActorForToken, requireRole, signIn, signOut, signUp } from "./accounts";
+import { signInFailures } from "./db/schema";
 import { AppError } from "./errors";
 
 const { db } = setupTestDb();
@@ -98,6 +99,13 @@ describe("accounts", () => {
     const now = new Date("2026-11-02T00:00:00Z");
     for (let i = 0; i < 5; i++) await errorCode(signIn(db, "Nobody@School.edu", "x", now));
     expect(await errorCode(signIn(db, "nobody@school.edu", "x", now))).toBe("TOO_MANY_ATTEMPTS");
+  });
+
+  it("prunes expired failures on the next failure", async () => {
+    const now = new Date("2026-11-02T00:00:00Z");
+    for (let i = 0; i < 3; i++) await errorCode(signIn(db, `ghost${i}@school.edu`, "x", now));
+    await errorCode(signIn(db, "late@school.edu", "x", new Date(now.getTime() + 16 * 60_000)));
+    expect(await db.select().from(signInFailures)).toHaveLength(1);
   });
 
   it("ignores a forged token", async () => {

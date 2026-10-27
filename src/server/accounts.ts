@@ -1,4 +1,4 @@
-import { and, count, eq, gt, or } from "drizzle-orm";
+import { and, count, eq, gt, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { hashPassword, hashToken, newSessionToken, verifyPassword } from "./auth";
 import type { Db } from "./db";
@@ -87,6 +87,8 @@ export async function signIn(db: Db, email: string, password: string, now = new 
   // Hash even when the email is unknown, so timing does not reveal which emails have accounts.
   const ok = await verifyPassword(password, user?.passwordHash ?? (await dummyHash()));
   if (!user || !ok) {
+    // Drop expired rows, so failures for unknown emails do not pile up.
+    await db.delete(signInFailures).where(lt(signInFailures.failedAt, since));
     await db.insert(signInFailures).values({ email: key, failedAt: now });
     throw new AppError("INVALID_CREDENTIALS", "Email or password is incorrect");
   }
