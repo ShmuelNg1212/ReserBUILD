@@ -56,6 +56,7 @@ These exist only in a local database. Production has no demo accounts.
 | `APP_TIME_ZONE` | `Asia/Manila` |
 | `ADMIN_EMAIL` | The first admin's email. Production only. |
 | `ADMIN_PASSWORD` | 12 characters or more. Production only. Remove it after the first deploy. |
+| `ADMIN_RESET_PASSWORD` | Set to `true` for one deploy to reset the admin's password to `ADMIN_PASSWORD`. The build log shows a fingerprint (first 8 hex characters of the SHA-256 of the password). Remove it after that deploy. |
 
 ### Release
 
