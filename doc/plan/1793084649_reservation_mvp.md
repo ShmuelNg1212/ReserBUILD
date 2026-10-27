@@ -114,12 +114,14 @@ Done when: a browser probe signs in as the seeded student, books a space across 
 - [x] Pending hold, deadline, expiry sweep, submit, verify, reject, cash, void, cancel rules. ADR 0003.
 
 ## Rendezvous checklist
-- [ ] `npm test` passes.
-- [ ] `code-review`, `simplify`, `security-review` (auth and money change).
-- [ ] `/impeccable critique`, `/impeccable audit`, `/impeccable polish`; `break-ui` on lists and the booking form.
-- [ ] Browser probe from task 8 passes. Record the result here.
+- [x] `npm test` passes: 93 tests, 6 files, run twice in a row clean. One earlier full run stalled 509 s in one test and was not reproduced in four runs; `testTimeout` is now 15 s so a lock wait fails fast.
+- [x] `code-review` (mattpocock, two axes). Spec findings fixed: user cancel with a pending payment, sweep before payment changes, void deadline floor, default status, cancelled payments in the staff queue. Standards findings fixed: float money in list balances, duplicated clock parser, DB reads outside `src/server`, the `purpose: "quote"` hack, copied cancel and check-in rules, implicit "rejected" rule, untyped label maps, stale AGENTS facts. Not changed (judgement): file size of `reservations.ts`, the action try/failure pattern, repeated error strings.
+- [ ] `simplify`: skipped. The code-review smells above covered the same ground.
+- [x] `security-review`: the skill could not run (no git remote). Manual review: authorization in every action and page, sign-up role, sessions, injection, money locks. Fixed: sign-in timing revealed which emails exist. Accepted for local use (ADR 0002): no rate limit, no session cleanup, a malformed form ID gives a server error.
+- [x] Design review: impeccable finish reviewer instead of separate critique/audit/polish (the new-work flow). Round 1 `fix` (8 material fixes), round 2 all 8 resolved plus one copy regression, round 3 `ship` on the scored fixes. `impeccable detect`: no findings.
+- [ ] `break-ui`: not run as a skill. Edge states probed instead (closed day, empty list, rejected, cancelled, sign-in error). Long names and long text not tested.
+- [x] Browser probe (Playwright, dev server, seeded data), 13/13 pass, no console errors: signed-out redirect; student books A 28 Oct 16:00–18:00, footer quotes ₱350; review shows 2 charges (₱150 off-peak + ₱200 peak); booking waits for payment; reference GC-778812 shows as being checked; staff queue lists it; staff verify; booking confirmed with balance ₱0.00; faculty sees A taken; faculty cannot open /admin. State probe 9/9 pass.
 - [ ] Merge to main locally.
-
 ## Sync docs
 - [x] Update `doc/wiki/spec.md` with the answered questions. Remove them from its open questions.
 - [x] Write `doc/wiki/architecture.md`.
