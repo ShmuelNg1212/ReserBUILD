@@ -23,6 +23,9 @@ export function localParts(instant: Date, timeZone = TIME_ZONE): LocalParts {
   };
 }
 
+// "HH:MM" → minutes since midnight.
+export const clockToMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
 // The instant of a local wall time ("HH:MM" or "HH:MM:SS") on a local date.
 export function atLocal(date: string, time: string, timeZone = TIME_ZONE): Date {
   const [y, m, d] = date.split("-").map(Number);

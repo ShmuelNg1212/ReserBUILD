@@ -12,11 +12,12 @@ import {
   users,
   type Payment,
   type Reservation,
+  type Role,
 } from "./db/schema";
 import { AppError, pgCode } from "./errors";
 import { fromCents, toCents } from "./money";
 import { priceReservation, PricingError, type PricedCharge } from "./pricing";
-import { atLocal, localParts } from "./time";
+import { atLocal, clockToMinutes, localParts } from "./time";
 
 export const RULES = {
   slotMinutes: 30,
@@ -28,7 +29,9 @@ export const RULES = {
   payBeforeStartHours: 2,
 };
 
-const HOUR = 3_600_000;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -53,23 +56,29 @@ export async function expireOverdue(db: Db | Tx, now: Date) {
     );
 }
 
+// Note on a payment voided because its booking was cancelled before staff checked it.
+export const CANCELLED_UNCHECKED_NOTE = "Booking cancelled before staff checked this payment. Refund it if the money arrived.";
+
 // Statuses that hold a slot. Keep in step with drizzle/0001_reservation_overlap.sql.
 export const ACTIVE_STATUSES = ["pending", "confirmed", "checked_in"] as const;
 
 const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a time as HH:MM");
 
-const bookingSchema = z.object({
+// A slot is what a quote needs; a booking adds its purpose.
+const slotSchema = z.object({
   spaceId: z.coerce.number().int().positive("Choose a space"),
   date: z.iso.date("Choose a date"),
   startTime: timeOfDay,
   endTime: timeOfDay,
-  purpose: z.string().trim().min(1, "Enter a purpose").max(500),
   headcount: z.coerce.number().int().min(1, "Headcount must be at least 1"),
 });
 
-export type BookingInput = z.input<typeof bookingSchema>;
+const bookingSchema = slotSchema.extend({
+  purpose: z.string().trim().min(1, "Enter a purpose").max(500),
+});
 
-const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+export type SlotInput = z.input<typeof slotSchema>;
+export type BookingInput = z.input<typeof bookingSchema>;
 
 const PRICING_MESSAGES: Record<PricingError["code"], string> = {
   INVALID_RANGE: "End time must be after start time",
@@ -78,9 +87,9 @@ const PRICING_MESSAGES: Record<PricingError["code"], string> = {
   RATE_CONFLICT: "Two rates overlap for this time. Ask an admin to fix the rates",
 };
 
-async function validateBooking(db: Db, raw: unknown, now: Date) {
-  const input = parseOrThrow(bookingSchema, raw);
-  const [startMin, endMin] = [minutesOf(input.startTime), minutesOf(input.endTime)];
+async function validateSlot(db: Db, raw: unknown, now: Date) {
+  const input = parseOrThrow(slotSchema, raw);
+  const [startMin, endMin] = [clockToMinutes(input.startTime), clockToMinutes(input.endTime)];
   if (startMin % RULES.slotMinutes !== 0 || endMin % RULES.slotMinutes !== 0) {
     throw new AppError("BAD_SLOT", "Bookings start and end on the hour or half hour");
   }
@@ -94,7 +103,7 @@ async function validateBooking(db: Db, raw: unknown, now: Date) {
   if (start.getTime() - now.getTime() < RULES.payBeforeStartHours * HOUR) {
     throw new AppError("TOO_SOON", "Book at least 2 hours ahead, so there is time to pay");
   }
-  if (start.getTime() > now.getTime() + RULES.maxDaysAhead * 86_400_000) {
+  if (start.getTime() > now.getTime() + RULES.maxDaysAhead * DAY) {
     throw new AppError("TOO_FAR_AHEAD", "You can book at most 30 days ahead");
   }
 
@@ -122,7 +131,7 @@ export type Quote = { total: string; charges: (PricedCharge & { isPeak: boolean 
 
 export async function quoteReservation(db: Db, actor: Actor | null, raw: unknown, now = new Date()): Promise<Quote> {
   requireRole(actor);
-  const v = await validateBooking(db, raw, now);
+  const v = await validateSlot(db, raw, now);
   const peakIds = new Set(
     (await db.select({ id: rates.rateId }).from(rates).where(eq(rates.isPeak, true))).map((r) => r.id),
   );
@@ -131,7 +140,8 @@ export async function quoteReservation(db: Db, actor: Actor | null, raw: unknown
 
 export async function createReservation(db: Db, actor: Actor | null, raw: unknown, now = new Date()) {
   const me = requireRole(actor);
-  const v = await validateBooking(db, raw, now);
+  const { purpose } = parseOrThrow(bookingSchema, raw);
+  const v = await validateSlot(db, raw, now);
   await expireOverdue(db, now);
   const slotTaken = () => new AppError("SLOT_TAKEN", `Space ${v.space.code} is already booked for part of this time`);
 
@@ -158,7 +168,7 @@ export async function createReservation(db: Db, actor: Actor | null, raw: unknow
           spaceId: v.space.spaceId,
           startAt: v.start,
           endAt: v.end,
-          purpose: v.input.purpose,
+          purpose,
           headcount: v.input.headcount,
           status: "pending",
           totalAmount: v.total,
@@ -187,7 +197,8 @@ export async function createReservation(db: Db, actor: Actor | null, raw: unknow
 
 // The reservation, if the actor owns it or is an admin. NOT_FOUND otherwise, so
 // IDs of other users' bookings do not leak.
-export async function loadOwned(db: Db | Tx, actor: Actor, reservationId: number): Promise<Reservation> {
+export async function loadOwned(db: Db | Tx, actor: Actor, reservationId: number, now = new Date()): Promise<Reservation> {
+  await expireOverdue(db, now);
   const [r] = await db.select().from(reservations).where(eq(reservations.reservationId, reservationId));
   if (!r || (r.userId !== actor.userId && actor.role !== "admin")) {
     throw new AppError("NOT_FOUND", "Reservation not found");
@@ -195,8 +206,31 @@ export async function loadOwned(db: Db | Tx, actor: Actor, reservationId: number
   return r;
 }
 
-// Users cancel their own unpaid bookings. Once money is involved, only staff
-// can cancel, and they record how the refund was handled.
+export type CancelPolicy =
+  | { allowed: true; needsRefundNote: boolean }
+  | { allowed: false; code: string; message: string };
+
+// Who may cancel. Users cancel their own pending bookings, even while a payment
+// is being checked. Once money is received (confirmed, or any paid payment),
+// only staff can cancel, and they record how the refund was handled.
+// Shared by the rule below and the booking page.
+export function cancelPolicy(
+  r: Pick<Reservation, "status" | "startAt">,
+  pays: Pick<Payment, "status">[],
+  role: Role,
+  now: Date,
+): CancelPolicy {
+  if (r.status !== "confirmed" && r.status !== "pending") {
+    return { allowed: false, code: "BAD_STATUS", message: "Only an upcoming booking can be cancelled" };
+  }
+  if (now >= r.startAt) return { allowed: false, code: "TOO_LATE", message: "A booking cannot be cancelled after it starts" };
+  const paid = pays.some((p) => p.status === "paid");
+  if ((r.status === "confirmed" || paid) && role !== "admin") {
+    return { allowed: false, code: "STAFF_ONLY", message: "This booking is paid. Ask the facility office to cancel it" };
+  }
+  return { allowed: true, needsRefundNote: paid };
+}
+
 export async function cancelReservation(
   db: Db,
   actor: Actor | null,
@@ -205,34 +239,37 @@ export async function cancelReservation(
   note?: string,
 ) {
   const me = requireRole(actor);
-  const r = await loadOwned(db, me, reservationId);
-  if (r.status !== "confirmed" && r.status !== "pending") {
-    throw new AppError("BAD_STATUS", "Only an upcoming booking can be cancelled");
-  }
-  if (now >= r.startAt) throw new AppError("TOO_LATE", "A booking cannot be cancelled after it starts");
-  const moneyIn = await db.$count(
-    payments,
-    and(eq(payments.reservationId, reservationId), inArray(payments.status, ["pending", "paid"])),
-  );
-  if ((r.status === "confirmed" || moneyIn > 0) && me.role !== "admin") {
-    throw new AppError("STAFF_ONLY", "This booking has a payment. Ask the facility office to cancel it");
-  }
+  const r = await loadOwned(db, me, reservationId, now);
+  const pays = await db.select().from(payments).where(eq(payments.reservationId, reservationId));
+  const policy = cancelPolicy(r, pays, me.role, now);
+  if (!policy.allowed) throw new AppError(policy.code, policy.message);
   const reason = note?.trim() || null;
-  if (moneyIn > 0 && !reason) {
+  if (policy.needsRefundNote && !reason) {
     throw new AppError("REFUND_NOTE_REQUIRED", "Write how the payment was refunded");
   }
-  await db
-    .update(reservations)
-    .set({ status: "cancelled", cancelledAt: now, cancelReason: reason })
-    .where(eq(reservations.reservationId, reservationId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(reservations)
+      .set({ status: "cancelled", cancelledAt: now, cancelReason: reason })
+      .where(eq(reservations.reservationId, reservationId));
+    // An unchecked payment leaves the staff queue; staff refund it if the money arrived.
+    await tx
+      .update(payments)
+      .set({ status: "voided", note: CANCELLED_UNCHECKED_NOTE })
+      .where(and(eq(payments.reservationId, reservationId), eq(payments.status, "pending")));
+  });
+}
+
+export function checkInWindow(r: Pick<Reservation, "startAt" | "endAt">) {
+  return { opens: new Date(r.startAt.getTime() - RULES.checkInEarlyMinutes * MINUTE), closes: r.endAt };
 }
 
 export async function checkIn(db: Db, actor: Actor | null, reservationId: number, now = new Date()) {
   const me = requireRole(actor);
-  const r = await loadOwned(db, me, reservationId);
+  const r = await loadOwned(db, me, reservationId, now);
   if (r.status !== "confirmed") throw new AppError("BAD_STATUS", "Only a confirmed booking can be checked in");
-  const opens = r.startAt.getTime() - RULES.checkInEarlyMinutes * 60_000;
-  if (now.getTime() < opens || now >= r.endAt) {
+  const { opens, closes } = checkInWindow(r);
+  if (now < opens || now >= closes) {
     throw new AppError("CHECK_IN_CLOSED", "Check-in opens 15 minutes before the start and closes at the end");
   }
   await db
@@ -249,7 +286,7 @@ export async function setOutcome(
   now = new Date(),
 ) {
   const me = requireRole(actor, "admin");
-  const r = await loadOwned(db, me, reservationId);
+  const r = await loadOwned(db, me, reservationId, now);
   if (now < r.endAt) throw new AppError("NOT_ENDED", "This booking has not ended yet");
   const from = outcome === "completed" ? "checked_in" : "confirmed";
   if (r.status !== from) {
@@ -322,8 +359,7 @@ export function balanceOf(reservation: Pick<Reservation, "status" | "totalAmount
 
 export async function getReservationDetail(db: Db, actor: Actor | null, reservationId: number, now = new Date()) {
   const me = requireRole(actor);
-  await expireOverdue(db, now);
-  const reservation = await loadOwned(db, me, reservationId);
+  const reservation = await loadOwned(db, me, reservationId, now);
   const [space] = await db.select().from(spaces).where(eq(spaces.spaceId, reservation.spaceId));
   const [owner] = await db
     .select({ firstName: users.firstName, lastName: users.lastName, email: users.email, schoolId: users.schoolId })
@@ -352,6 +388,7 @@ export async function getReservationDetail(db: Db, actor: Actor | null, reservat
     charges: chargeRows.map((r) => ({ ...r.charge, isPeak: r.isPeak })),
     payments: paymentRows,
     participants: participantRows,
+    balanceCents: balanceOf(reservation, paymentRows),
     balance: fromCents(balanceOf(reservation, paymentRows)),
   };
 }
@@ -369,7 +406,7 @@ const listColumns = {
 function withBalance<T extends { reservation: Reservation; paid: string }>(rows: T[]) {
   return rows.map((row) => ({
     ...row,
-    balance: fromCents(balanceOf(row.reservation, [{ amount: Number(row.paid).toFixed(2), status: "paid" }])),
+    balance: fromCents(balanceOf(row.reservation, [{ amount: row.paid, status: "paid" }])),
   }));
 }
 
@@ -402,7 +439,7 @@ export async function getDayBookings(db: Db, actor: Actor | null, spaceId: numbe
   requireRole(actor);
   await expireOverdue(db, now);
   const dayStart = atLocal(date, "00:00");
-  const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+  const dayEnd = new Date(dayStart.getTime() + DAY);
   const rows = await db
     .select({ startAt: reservations.startAt, endAt: reservations.endAt, userId: reservations.userId })
     .from(reservations)

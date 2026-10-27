@@ -121,7 +121,7 @@ export const reservations = pgTable(
     endAt: tstz("end_at").notNull(),
     purpose: text("purpose").notNull(),
     headcount: integer("headcount").notNull(),
-    status: reservationStatus("status").notNull().default("confirmed"),
+    status: reservationStatus("status").notNull().default("pending"),
     totalAmount: money("total_amount").notNull(),
     createdAt: tstz("created_at").notNull().defaultNow(),
     checkedInAt: tstz("checked_in_at"),

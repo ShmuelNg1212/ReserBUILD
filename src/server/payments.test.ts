@@ -173,6 +173,15 @@ describe("voidPayment", () => {
     expect(await code(voidPayment(db, admin, p.paymentId, "again", later))).toBe("BAD_STATUS");
   });
 
+  it("keeps the hold until start when a void comes less than 2 hours before it", async () => {
+    const { user, admin, r } = await setup();
+    const p = await recordPayment(db, admin, r.reservationId, { amount: "250", method: "cash" }, now);
+    const late = atLocal("2026-11-02", "15:00");
+    await voidPayment(db, admin, p.paymentId, "Counterfeit note", late);
+    const d = await getReservationDetail(db, user, r.reservationId, late);
+    expect(d.reservation).toMatchObject({ status: "pending", paymentDueAt: atLocal("2026-11-02", "16:00") });
+  });
+
   it("is admin only", async () => {
     const { user, admin, r } = await setup();
     const p = await recordPayment(db, admin, r.reservationId, { amount: "10", method: "cash" }, now);

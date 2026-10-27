@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { parseOrThrow, requireRole, type Actor } from "./accounts";
 import type { Db } from "./db";
@@ -61,6 +61,13 @@ export async function createRate(db: Db, actor: Actor | null, raw: unknown) {
   return rate;
 }
 
+export async function getRate(db: Db, actor: Actor | null, rateId: number) {
+  requireRole(actor, "admin");
+  const [rate] = await db.select().from(rates).where(eq(rates.rateId, rateId));
+  if (!rate) throw new AppError("NOT_FOUND", "Rate not found");
+  return { rate, usedBy: await db.$count(charges, eq(charges.rateId, rateId)) };
+}
+
 export async function updateRate(db: Db, actor: Actor | null, rateId: number, raw: unknown) {
   requireRole(actor, "admin");
   const [rate] = await db
@@ -91,6 +98,7 @@ export async function listPendingPayments(db: Db, actor: Actor | null) {
       reservationId: reservations.reservationId,
       startAt: reservations.startAt,
       endAt: reservations.endAt,
+      paymentDueAt: reservations.paymentDueAt,
       totalAmount: reservations.totalAmount,
       spaceCode: spaces.code,
       spaceName: spaces.name,
@@ -102,6 +110,6 @@ export async function listPendingPayments(db: Db, actor: Actor | null) {
     .innerJoin(reservations, eq(reservations.reservationId, payments.reservationId))
     .innerJoin(spaces, eq(spaces.spaceId, reservations.spaceId))
     .innerJoin(users, eq(users.userId, reservations.userId))
-    .where(eq(payments.status, "pending"))
+    .where(and(eq(payments.status, "pending"), ne(reservations.status, "cancelled")))
     .orderBy(asc(payments.submittedAt));
 }

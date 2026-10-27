@@ -13,10 +13,10 @@ Several staff run ReserBUILD. Users pay ahead by e-wallet or bank transfer. Staf
 - The user submits one payment for the full total, with method and reference number. It is `pending` until staff act.
 - Any admin verifies (`paid`, with `received_by` and `paid_at`) or rejects (`voided`, with a note) the payment. When the paid total reaches the booking total, the booking becomes `confirmed`.
 - An admin can record a cash payment as `paid` at once.
-- At the deadline, a `pending` booking with no `pending` or `paid` payment is cancelled with a reason. The sweep runs before every booking read and write, so the slot frees without a background job.
+- At the deadline, a `pending` booking with no `pending` or `paid` payment is cancelled with a reason. The sweep runs before every booking read and write (cancel, check-in, and every payment change included), so the slot frees without a background job.
 - Check-in needs `confirmed`.
-- A user can cancel a `pending` booking before start. Only an admin can cancel a `confirmed` booking; if it has paid payments, the admin must write a refund note. Refunds happen outside the app.
-- If an admin voids a paid payment on a `confirmed` booking, the booking returns to `pending` with a new deadline.
+- A user can cancel a `pending` booking before start, also while a payment is being checked. That pending payment is voided with a note telling staff to refund it if the money arrived. Only an admin can cancel a `confirmed` booking or one with a paid payment, and the admin must write a refund note. Refunds happen outside the app.
+- If an admin voids a paid payment on a `confirmed` booking, the booking returns to `pending` with a new deadline. If that deadline would already be past (less than 2 hours to start), the hold lasts until the start.
 
 ## Consequences
 

@@ -4,7 +4,8 @@ import { makeSpace, makeStandardRates, makeUser, setupTestDb } from "@/test/db";
 import type { Actor } from "./accounts";
 import { charges, reservations } from "./db/schema";
 import { AppError } from "./errors";
-import { submitPayment, verifyPayment } from "./payments";
+import { listPendingPayments } from "./admin";
+import { recordPayment, submitPayment, verifyPayment } from "./payments";
 import {
   addParticipant,
   cancelReservation,
@@ -168,9 +169,13 @@ describe("cancelReservation", () => {
   });
 
   it("refuses after the start time", async () => {
-    const { user, space } = await setup();
+    // A paid booking, so the deadline sweep does not cancel it first.
+    const { user, admin, space } = await setup();
     const r = await createReservation(db, user, input(space.spaceId), now);
-    expect(await code(cancelReservation(db, user, r.reservationId, atLocal("2026-11-02", "16:00")))).toBe("TOO_LATE");
+    await confirm(user, admin, r.reservationId);
+    expect(await code(cancelReservation(db, admin, r.reservationId, atLocal("2026-11-02", "16:00"), "n/a"))).toBe(
+      "TOO_LATE",
+    );
   });
 
   it("refuses another user's reservation, but allows an admin", async () => {
@@ -200,6 +205,19 @@ describe("staff-only cancellation of paid bookings", () => {
     expect(detail.reservation).toMatchObject({ status: "cancelled", cancelReason: "Refunded ₱250 by GCash, ref R-9" });
     expect(detail.balance).toBe("0.00");
   });
+
+  it("lets a user cancel a pending booking while a payment is being checked", async () => {
+    const { user, admin, space } = await setup();
+    const r = await createReservation(db, user, input(space.spaceId), now);
+    await submitPayment(db, user, r.reservationId, { method: "e_wallet", referenceNo: "GC-5" }, now);
+    await cancelReservation(db, user, r.reservationId, now);
+    const detail = await getReservationDetail(db, admin, r.reservationId, now);
+    expect(detail.reservation.status).toBe("cancelled");
+    // The unchecked payment leaves the staff queue with a note to refund it if the money arrived.
+    expect(detail.payments[0]).toMatchObject({ status: "voided" });
+    expect(detail.payments[0].note).toMatch(/refund/i);
+    expect(await listPendingPayments(db, admin)).toHaveLength(0);
+  });
 });
 
 describe("payment deadline", () => {
@@ -223,6 +241,15 @@ describe("payment deadline", () => {
     await submitPayment(db, user, r.reservationId, { method: "bank_transfer", referenceNo: "BT-1" }, now);
     expect(await code(createReservation(db, other, input(space.spaceId), afterDue))).toBe("SLOT_TAKEN");
     expect((await getReservationDetail(db, user, r.reservationId, afterDue)).reservation.status).toBe("pending");
+  });
+
+  it("expires an overdue booking before staff can record a payment on it", async () => {
+    const { user, admin, space } = await setup();
+    const r = await createReservation(db, user, input(space.spaceId), now);
+    expect(await code(recordPayment(db, admin, r.reservationId, { amount: "250", method: "cash" }, afterDue))).toBe(
+      "BAD_STATUS",
+    );
+    expect((await getReservationDetail(db, admin, r.reservationId, afterDue)).reservation.status).toBe("cancelled");
   });
 
   it("uses 2 hours before start when that is earlier", async () => {
