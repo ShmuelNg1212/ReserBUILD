@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { makeSpace, makeStandardRates, makeUser, setupTestDb } from "@/test/db";
 import type { Actor } from "./accounts";
-import { createRate, deleteRate, updateRate, updateSpace } from "./admin";
+import { createRate, deleteRate, listPendingPayments, updateRate, updateSpace } from "./admin";
+import { submitPayment, verifyPayment } from "./payments";
 import { AppError } from "./errors";
 import { createReservation } from "./reservations";
 import { atLocal } from "./time";
@@ -79,5 +80,27 @@ describe("admin", () => {
     const space = await makeSpace(db);
     const updated = await updateSpace(db, admin, space.spaceId, { name: "A", spaceType: "build", capacity: 8, isActive: "" });
     expect(updated.isActive).toBe(false);
+  });
+});
+
+describe("listPendingPayments", () => {
+  it("lists only payments waiting for staff, oldest first, for admins only", async () => {
+    const admin = asActor(await makeUser(db, "admin"));
+    const user = asActor(await makeUser(db, "student"));
+    const space = await makeSpace(db);
+    await makeStandardRates(db);
+    const now = atLocal("2026-11-01", "08:00");
+    const book = (start: string, end: string) =>
+      createReservation(db, user, { spaceId: space.spaceId, date: "2026-11-02", startTime: start, endTime: end, purpose: "x", headcount: 1 }, now);
+    const a = await book("09:00", "10:00");
+    const b = await book("11:00", "12:00");
+    const pa = await submitPayment(db, user, a.reservationId, { method: "e_wallet", referenceNo: "A1" }, now);
+    await submitPayment(db, user, b.reservationId, { method: "bank_transfer", referenceNo: "B1" }, atLocal("2026-11-01", "09:00"));
+    await verifyPayment(db, admin, pa.paymentId, now);
+
+    const rows = await listPendingPayments(db, admin);
+    expect(rows.map((r) => r.payment.referenceNo)).toEqual(["B1"]);
+    expect(rows[0]).toMatchObject({ spaceCode: "A", reservationId: b.reservationId });
+    expect(await code(listPendingPayments(db, user))).toBe("FORBIDDEN");
   });
 });

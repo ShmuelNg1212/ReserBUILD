@@ -100,3 +100,28 @@ export function priceReservation(input: {
   const totalCents = charges.reduce((sum, c) => sum + c.amountCents, 0);
   return { charges, totalCents, total: fromCents(totalCents) };
 }
+
+const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+
+// Local minutes [from, to) when any rate covers this space on this date.
+// Time outside these windows is closed.
+export function openWindows(spaceId: number, date: string, rates: PricingRate[], timeZone = TIME_ZONE): [number, number][] {
+  const { dayOfWeek } = localParts(atLocal(date, "12:00", timeZone), timeZone);
+  const windows = rates
+    .filter(
+      (r) =>
+        (r.spaceId === null || r.spaceId === spaceId) &&
+        (r.dayOfWeek === null || r.dayOfWeek === dayOfWeek) &&
+        r.effectiveFrom <= date &&
+        (r.effectiveTo === null || r.effectiveTo >= date),
+    )
+    .map((r): [number, number] => [toMinutes(r.startTime), toMinutes(r.endTime)])
+    .sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [from, to] of windows) {
+    const last = merged.at(-1);
+    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  }
+  return merged;
+}

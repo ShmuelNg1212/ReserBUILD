@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { priceReservation, PricingError, type PricingRate } from "./pricing";
+import { openWindows, priceReservation, PricingError, type PricingRate } from "./pricing";
 import { atLocal } from "./time";
 
 // 2026-11-02 is a Monday, 2026-11-07 a Saturday. Times are Asia/Manila.
@@ -134,5 +134,26 @@ describe("priceReservation", () => {
     ]);
     expect(result.charges).toHaveLength(1);
     expect(result.charges[0].hours).toBe("4.00");
+  });
+});
+
+describe("openWindows", () => {
+  it("merges the windows that apply to a space on a date, in local minutes", () => {
+    const saturday = rate({ dayOfWeek: "sat", startTime: "08:00:00", endTime: "18:00:00" });
+    const spaceTwo = rate({ spaceId: 2, startTime: "06:00:00", endTime: "07:30:00" });
+    const rates = [...standard, saturday, spaceTwo];
+    expect(openWindows(1, "2026-11-02", rates)).toEqual([[420, 1320]]);
+    expect(openWindows(2, "2026-11-02", rates)).toEqual([[360, 1320]]);
+    // Saturday gets the daily windows plus its own; union is 07:00–22:00.
+    expect(openWindows(1, "2026-11-07", rates)).toEqual([[420, 1320]]);
+    expect(openWindows(1, "2026-11-02", [saturday])).toEqual([]);
+  });
+
+  it("keeps a gap between windows", () => {
+    const rates = [rate({ startTime: "07:00:00", endTime: "12:00:00" }), rate({ startTime: "13:00:00", endTime: "17:00:00" })];
+    expect(openWindows(1, "2026-11-02", rates)).toEqual([
+      [420, 720],
+      [780, 1020],
+    ]);
   });
 });

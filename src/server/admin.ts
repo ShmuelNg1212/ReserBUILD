@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { parseOrThrow, requireRole, type Actor } from "./accounts";
 import type { Db } from "./db";
-import { charges, dayOfWeek, rates, spaces } from "./db/schema";
+import { charges, dayOfWeek, payments, rates, reservations, spaces, users } from "./db/schema";
 import { AppError } from "./errors";
 import { fromCents, toCents } from "./money";
 
@@ -80,4 +80,28 @@ export async function deleteRate(db: Db, actor: Actor | null, rateId: number) {
     throw new AppError("RATE_IN_USE", "Bookings use this rate. Set its last day instead of deleting it");
   }
   await db.delete(rates).where(eq(rates.rateId, rateId));
+}
+
+// The staff queue: submitted payments waiting for a check, oldest first.
+export async function listPendingPayments(db: Db, actor: Actor | null) {
+  requireRole(actor, "admin");
+  return db
+    .select({
+      payment: payments,
+      reservationId: reservations.reservationId,
+      startAt: reservations.startAt,
+      endAt: reservations.endAt,
+      totalAmount: reservations.totalAmount,
+      spaceCode: spaces.code,
+      spaceName: spaces.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      schoolId: users.schoolId,
+    })
+    .from(payments)
+    .innerJoin(reservations, eq(reservations.reservationId, payments.reservationId))
+    .innerJoin(spaces, eq(spaces.spaceId, reservations.spaceId))
+    .innerJoin(users, eq(users.userId, reservations.userId))
+    .where(eq(payments.status, "pending"))
+    .orderBy(asc(payments.submittedAt));
 }
