@@ -211,6 +211,17 @@ Color is a state channel only. Red, green, and amber each appear as a pale tint 
 - Flat: no shadows anywhere.
 - 44px minimum touch height on every control.
 
+## Brand
+
+**The mark: "Taken + yours".** A schedule frame drawn in ink: a 2px outline, a 2px header rule, one Taken Gray block, and one ink block lower and to the right. It is the booking grid at its smallest: someone else's slot, and yours. It uses only system colors, so it carries no brand hue. It uses no Ateneo assets (PRODUCT.md, Brand Commitments).
+
+- **Wordmark:** "Reser" in Geist 500 and "BUILD" in Geist 700, tracking -0.02em. Always one word. Never a lower-case "build".
+- **Lockup:** mark at 24px, 8px gap, wordmark at 1rem (the header). The mark's height matches the cap height plus the descender space.
+- **Inverse:** on ink, the frame and the booked block turn paper and the taken block turns Graphite (`public/brand/reserbuild-mark-inverse.svg`).
+- **Minimum size:** 16px. Below 16px, the taken block disappears.
+- **Files:** `src/components/logo.tsx` (in the app, from theme tokens), `src/app/icon.svg` (favicon), `src/app/apple-icon.png` (180px), `src/app/opengraph-image.png` (1200×630 share card), `public/brand/` (marks for use outside the app).
+- **Do not:** add a color, rotate, put the mark inside another shape, or add a tagline to the lockup.
+
 ## Colors
 
 A neutral printout palette with three state pairs; ink is the only emphasis.
