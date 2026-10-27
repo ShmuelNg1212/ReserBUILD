@@ -20,7 +20,7 @@ Each question has a default. Execute uses the default if the human does not answ
 
 ## OPEN QUESTIONS, ROUND 2 (from `/impeccable init`, 2026-10-27)
 
-The human said: several staff run the app, and **users pay ahead**. This replaces the answers to questions 5 and 6. It changes money logic, so it needs approval and an ADR before code changes. Execute is stopped here.
+The human said: several staff run the app, and **users pay ahead**. This replaces the answers to questions 5 and 6. Approved 2026-10-27 with all defaults and neutral colors. ADR 0003.
 
 10. **Hold.** Default: a new booking is `pending`. It holds the slot (the overlap constraint already counts `pending`).
 11. **Deadline.** Default: the user must submit payment within 24 hours of booking, or by 2 hours before start, whichever is earlier. After that, the booking is cancelled automatically and the slot is free. A booking made less than 2 hours before start is refused.
@@ -41,6 +41,9 @@ The human said: several staff run the app, and **users pay ahead**. This replace
 - A participant whose email matches a user account is linked to it; otherwise external.
 - A rate used by charges cannot be deleted. The admin sets its last day.
 - Refunds are not modelled. Cancelling a paid booking sets its balance to 0 but keeps the payments. Open for a later plan.
+- Booking has a review step (`/book/review`) for the purpose field and the charge tally before commit.
+- Participants are capped at the headcount; sign-up limits year level to 1 to 6.
+- Payment account details are unknown. `src/lib/payment-info.ts` is empty; the app tells users to ask the facility office.
 - The race test first passed without the constraint, because the early check caught every request. It now holds an uncommitted clashing insert in a second connection. Checked: it fails with the constraint removed.
 
 ## Tasks
@@ -93,19 +96,22 @@ Done when: tests cover partial payment, full payment, overpayment refused, and v
 
 ### 7. Design study — design pass
 - [x] Run `/impeccable init` to write PRODUCT.md. The human answers its questions.
-- [ ] Run `/impeccable shape` for the booking flow. Record the surfaces below as the brief.
+- [x] Run `/impeccable shape` for the booking flow. Record the surfaces below as the brief. Answers: time first; staff home is payments to check. The human picked the Enlistment Grid direction. Brief: `.impeccable/surfaces/src-app-book-page-tsx.md`.
 
 Done when: PRODUCT.md exists and the shape brief lists each surface.
 
 ### 8. UI — `tests: alongside`
-- [ ] Spaces page: the 4 spaces with type, capacity, and a day view of free and booked times.
-- [ ] Booking form: space, date, start, end, purpose, headcount. Shows the live price breakdown by charge.
-- [ ] My reservations: upcoming and past, with status and balance.
-- [ ] Reservation detail: charges, payments, participants, cancel and check-in.
-- [ ] Admin: spaces (edit, deactivate), rates (CRUD), reservations list, record payment.
-- [ ] Run `/impeccable [feature]` per surface. Run `/impeccable document` once to write DESIGN.md.
+- [x] Spaces page: the 4 spaces with type, capacity, and a day view of free and booked times.
+- [x] Booking form: space, date, start, end, purpose, headcount. Shows the live price breakdown by charge.
+- [x] My reservations: upcoming and past, with status and balance.
+- [x] Reservation detail: charges, payments, participants, cancel and check-in.
+- [x] Admin: spaces (edit, deactivate), rates (CRUD), reservations list, record payment.
+- [x] Run `/impeccable [feature]` per surface. Run `/impeccable document` once to write DESIGN.md.
 
-Done when: a browser probe signs in as the seeded student, books a space across a peak boundary, sees two charges, and the admin records a payment that sets the balance to zero.
+Done when: a browser probe signs in as the seeded student, books a space across a peak boundary, sees two charges, and the admin records a payment that sets the balance to zero. (With pay ahead: the student submits a reference and staff verify it.)
+
+### 9. Pay ahead — `tests: first` (added by round 2)
+- [x] Pending hold, deadline, expiry sweep, submit, verify, reject, cash, void, cancel rules. ADR 0003.
 
 ## Rendezvous checklist
 - [ ] `npm test` passes.
@@ -115,5 +121,5 @@ Done when: a browser probe signs in as the seeded student, books a space across 
 - [ ] Merge to main locally.
 
 ## Sync docs
-- [ ] Update `doc/wiki/spec.md` with the answered questions. Remove them from its open questions.
-- [ ] Write `doc/wiki/architecture.md`.
+- [x] Update `doc/wiki/spec.md` with the answered questions. Remove them from its open questions.
+- [x] Write `doc/wiki/architecture.md`.

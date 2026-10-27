@@ -82,9 +82,10 @@ Write docs and plans in ASD-STE100: short sentences, one instruction per sentenc
 ## Project facts
 
 - Test command: `npm test`
-- Stack: Next.js (TypeScript) with Postgres. The project has no code yet.
+- Stack: Next.js 16 (TypeScript, App Router, server actions), Postgres 17 with Drizzle, Tailwind 4, Vitest. Local setup: `doc/wiki/setup.md`.
+- Domain rules live in `src/server/` as plain functions `(db, actor, input, now)`; each checks the role first. Server actions in `src/app/actions/` are thin wrappers. See `doc/wiki/architecture.md`.
 - Data model: [doc/canonical/erd.png](doc/canonical/erd.png). Summary in [doc/wiki/spec.md](doc/wiki/spec.md).
-- Design sources: `PRODUCT.md` and `DESIGN.md` at the repo root, owned by impeccable. They do not exist yet; create them with `/impeccable init` and `/impeccable document`.
+- Design sources: `PRODUCT.md` and `DESIGN.md` at the repo root, owned by impeccable, and the surface brief in `.impeccable/surfaces/`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
