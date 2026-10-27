@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Next.js 16 (App Router, TypeScript, server actions), PostgreSQL 17 with Drizzle, Tailwind CSS 4. Runs locally only for now; no deploy target. Chosen by the user at setup.
+Next.js 16 (App Router, TypeScript, server actions), PostgreSQL 17 with Drizzle, Tailwind CSS 4. Hosted on Vercel with Neon Postgres (doc/adr/0004-vercel-neon-hosting.md). Chosen by the user.
 
 ## Users
 

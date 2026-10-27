@@ -69,7 +69,7 @@ Each kind of knowledge has one home. Look there first; write there only.
 - Work on a feature branch; rendezvous merges to main locally. If a push to main deploys, main holds only what production has or what is approved to ship next: keep other finished work on its own branch. Approval names a change, but a push ships a branch.
 - Before any push, list the commits that will go out and name any the approval did not cover.
 - Push only when the human says "ship" or "push"; then run the push yourself. Never force-push.
-- The app runs only locally for now. A push does not deploy. When the human picks a host, a push to main will deploy, and these rules apply:
+- The app runs on Vercel (doc/adr/0004-vercel-neon-hosting.md). A push to main deploys, and these rules apply:
   - Before a push, run the test suite once under the host's build environment variables. A build that fails safe also fails silently.
   - Before a push, record the previous main commit in the plan for rollback.
   - A release is finished only when a marker unique to the new version shows on the live site. It is not finished when the push returns.

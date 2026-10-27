@@ -14,7 +14,11 @@ The overlap exclusion constraint (`drizzle/0001_reservation_overlap.sql`) stops 
 
 ## No background jobs
 
-Expired pay-ahead holds are cancelled by `expireOverdue`, which runs before booking reads and writes. A local app has no scheduler, and this keeps the rule in one place.
+Expired pay-ahead holds are cancelled by `expireOverdue`, which runs before booking reads and writes. Vercel Hobby has no frequent scheduler, and this keeps the rule in one place.
+
+## Hosting
+
+Production is Vercel with Neon (doc/adr/0004-vercel-neon-hosting.md). Functions suspend between requests, so the run-time pool is small and goes through Neon's pooler. Migrations and the bootstrap use the direct URL. Each build migrates before it compiles, so a failed migration leaves the old version live. Scripts that delete data refuse any non-local database.
 
 ## Time and money
 
