@@ -7,6 +7,9 @@ import { AppError, pgCode } from "./errors";
 
 const SESSION_DAYS = 7;
 
+let dummy: Promise<string> | undefined;
+const dummyHash = () => (dummy ??= hashPassword("not-a-real-password"));
+
 export type Actor = { userId: number; role: Role; name: string };
 
 const optionalText = z
@@ -72,7 +75,9 @@ export async function signIn(db: Db, email: string, password: string, now = new 
     .select()
     .from(users)
     .where(eq(users.email, email.trim().toLowerCase()));
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  // Hash even when the email is unknown, so timing does not reveal which emails have accounts.
+  const ok = await verifyPassword(password, user?.passwordHash ?? (await dummyHash()));
+  if (!user || !ok) {
     throw new AppError("INVALID_CREDENTIALS", "Email or password is incorrect");
   }
   const { token, tokenHash } = newSessionToken();
