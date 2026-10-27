@@ -10,7 +10,7 @@ export function setupTestDb(): { db: Db; pool: Pool } {
   const { db, pool } = createDb(process.env.TEST_DATABASE_URL!);
   beforeEach(async () => {
     await db.execute(
-      sql`truncate users, sessions, spaces, rates, reservations, participants, charges, payments restart identity cascade`,
+      sql`truncate users, sessions, sign_in_failures, spaces, rates, reservations, participants, charges, payments restart identity cascade`,
     );
   });
   afterAll(() => pool.end());

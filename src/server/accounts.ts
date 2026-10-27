@@ -1,11 +1,13 @@
-import { and, eq, gt, or } from "drizzle-orm";
+import { and, count, eq, gt, or } from "drizzle-orm";
 import { z } from "zod";
 import { hashPassword, hashToken, newSessionToken, verifyPassword } from "./auth";
 import type { Db } from "./db";
-import { sessions, users, type Role, type User } from "./db/schema";
+import { sessions, signInFailures, users, type Role, type User } from "./db/schema";
 import { AppError, pgCode } from "./errors";
 
 const SESSION_DAYS = 7;
+const THROTTLE_MAX_FAILURES = 5;
+const THROTTLE_WINDOW_MS = 15 * 60_000;
 
 let dummy: Promise<string> | undefined;
 const dummyHash = () => (dummy ??= hashPassword("not-a-real-password"));
@@ -71,15 +73,24 @@ export async function signUp(db: Db, input: Record<string, unknown>): Promise<Us
 const duplicate = () => new AppError("DUPLICATE", "An account with this email or school ID already exists");
 
 export async function signIn(db: Db, email: string, password: string, now = new Date()) {
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email.trim().toLowerCase()));
+  const key = email.trim().toLowerCase();
+  const since = new Date(now.getTime() - THROTTLE_WINDOW_MS);
+  const [{ failures }] = await db
+    .select({ failures: count() })
+    .from(signInFailures)
+    .where(and(eq(signInFailures.email, key), gt(signInFailures.failedAt, since)));
+  if (failures >= THROTTLE_MAX_FAILURES) {
+    throw new AppError("TOO_MANY_ATTEMPTS", "Too many failed sign-ins. Wait 15 minutes, then try again.");
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.email, key));
   // Hash even when the email is unknown, so timing does not reveal which emails have accounts.
   const ok = await verifyPassword(password, user?.passwordHash ?? (await dummyHash()));
   if (!user || !ok) {
+    await db.insert(signInFailures).values({ email: key, failedAt: now });
     throw new AppError("INVALID_CREDENTIALS", "Email or password is incorrect");
   }
+  await db.delete(signInFailures).where(eq(signInFailures.email, key));
   const { token, tokenHash } = newSessionToken();
   const expiresAt = new Date(now.getTime() + SESSION_DAYS * 86_400_000);
   await db.insert(sessions).values({ tokenHash, userId: user.userId, expiresAt });

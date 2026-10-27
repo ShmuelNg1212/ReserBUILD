@@ -68,6 +68,17 @@ export const sessions = pgTable("sessions", {
   expiresAt: tstz("expires_at").notNull(),
 });
 
+// Failed sign-ins, for the sign-in throttle (doc/adr/0002-own-session-auth.md).
+export const signInFailures = pgTable(
+  "sign_in_failures",
+  {
+    failureId: serial("failure_id").primaryKey(),
+    email: text("email").notNull(),
+    failedAt: tstz("failed_at").notNull(),
+  },
+  (t) => [index("sign_in_failures_email_failed_at").on(t.email, t.failedAt)],
+);
+
 export const spaces = pgTable(
   "spaces",
   {
