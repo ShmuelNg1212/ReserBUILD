@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { hashPassword } from "../src/server/auth";
 import { createDb } from "../src/server/db";
 import { spaces, users } from "../src/server/db/schema";
-import { insertCatalog } from "./catalog.mts";
+import { insertCatalog } from "./catalog.mjs";
 
 config({ path: ".env.local", quiet: true });
 

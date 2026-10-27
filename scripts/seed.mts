@@ -4,7 +4,7 @@ import { hashPassword } from "../src/server/auth";
 import { createDb } from "../src/server/db";
 import { assertLocalDatabase } from "../src/server/db/local";
 import { users } from "../src/server/db/schema";
-import { insertCatalog } from "./catalog.mts";
+import { insertCatalog } from "./catalog.mjs";
 
 config({ path: ".env.local", quiet: true });
 
