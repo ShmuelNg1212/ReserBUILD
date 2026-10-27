@@ -18,51 +18,63 @@ Each question has a default. Execute uses the default if the human does not answ
 8. **Cancellation.** Default: the user can cancel before `start_at`. A cancelled booking keeps its charges for the record but owes nothing.
 9. **Enums.** Default values as in the study (reservation, payment method, payment status).
 
+## DECISIONS DURING EXECUTE
+
+- OPEN QUESTIONS 1–9: the human said "go". All defaults apply.
+- Auth: own scrypt + session table, not Better Auth. Better Auth needs string user IDs; the ERD uses integers. ADR 0002.
+- `cacheComponents` is off in `next.config.ts`. Every page reads the session.
+- Check-in opens 15 minutes before start and closes at end.
+- Outcome: after end, an admin marks `completed` (from `checked_in`) or `no_show` (from `confirmed`).
+- A participant whose email matches a user account is linked to it; otherwise external.
+- A rate used by charges cannot be deleted. The admin sets its last day.
+- Refunds are not modelled. Cancelling a paid booking sets its balance to 0 but keeps the payments. Open for a later plan.
+- The race test first passed without the constraint, because the early check caught every request. It now holds an uncommitted clashing insert in a second connection. Checked: it fails with the constraint removed.
+
 ## Tasks
 
 ### 1. Scaffold — `tests: alongside`
-- [ ] Create the Next.js 16 app (TypeScript, App Router, Tailwind, ESLint) in the repo root.
-- [ ] Add Vitest. `npm test` runs all tests.
-- [ ] Add Drizzle and drizzle-kit. Read `DATABASE_URL` from `.env.local`. Add `.env.example`.
-- [ ] Create the databases `reserbuild` and `reserbuild_test`.
-- [ ] Write `doc/wiki/setup.md`: install, env, migrate, seed, run, test.
+- [x] Create the Next.js 16 app (TypeScript, App Router, Tailwind, ESLint) in the repo root.
+- [x] Add Vitest. `npm test` runs all tests.
+- [x] Add Drizzle and drizzle-kit. Read `DATABASE_URL` from `.env.local`. Add `.env.example`.
+- [x] Create the databases `reserbuild` and `reserbuild_test`.
+- [x] Write `doc/wiki/setup.md`: install, env, migrate, seed, run, test.
 
-Done when: `npm run dev` serves a page, `npm test` passes one smoke test, and `doc/wiki/setup.md` has every command.
+Done when (checked: dev returned 200): `npm run dev` serves a page, `npm test` passes one smoke test, and `doc/wiki/setup.md` has every command.
 
 ### 2. Schema and seed — `tests: first`
-- [ ] Write the Drizzle schema for all 7 ERD tables, with the enums from the answers. Money is `numeric(10,2)`. Times are `timestamptz`.
-- [ ] Add `btree_gist` and the overlap exclusion constraint on `reservation`.
-- [ ] Add checks: `end_at > start_at`; `headcount > 0`; `rates.end_time > start_time`.
-- [ ] Seed: spaces A–D (2 `build`, 2 `meeting`), one admin, one student, one faculty user, and a rate table with off-peak and peak windows.
-- [ ] Write ADR `doc/adr/0001-admin-role.md` if question 1 adds the role.
+- [x] Write the Drizzle schema for all 7 ERD tables, with the enums from the answers. Money is `numeric(10,2)`. Times are `timestamptz`.
+- [x] Add `btree_gist` and the overlap exclusion constraint on `reservation`.
+- [x] Add checks: `end_at > start_at`; `headcount > 0`; `rates.end_time > start_time`.
+- [x] Seed: spaces A–D (2 `build`, 2 `meeting`), one admin, one student, one faculty user, and a rate table with off-peak and peak windows.
+- [x] Write ADR `doc/adr/0001-admin-role.md` if question 1 adds the role.
 
 Done when: an integration test proves that two overlapping active reservations for one space fail, and that a cancelled one does not block.
 
 ### 3. Pricing engine — `tests: first`
-- [ ] Write a pure function `priceReservation(space, start, end, rates) → charges[]`.
-- [ ] Test: one window; a booking that crosses off-peak to peak; day-specific beats daily; space-specific beats all-spaces; `effective_from`/`effective_to` edges; a gap with no rate fails; a tie fails; cent rounding.
-- [ ] Add `doc/wiki/footguns/` notes for rate precedence and the time zone.
+- [x] Write a pure function `priceReservation(space, start, end, rates) → charges[]`.
+- [x] Test: one window; a booking that crosses off-peak to peak; day-specific beats daily; space-specific beats all-spaces; `effective_from`/`effective_to` edges; a gap with no rate fails; a tie fails; cent rounding.
+- [x] Add `doc/wiki/footguns/` notes for rate precedence and the time zone.
 
 Done when: all pricing tests pass and the function has no database access.
 
 ### 4. Auth — `tests: first`
-- [ ] Add Better Auth with email and password. Store sessions in Postgres.
-- [ ] Sign-up form collects the ERD User fields. `year_level` is required for students and null for faculty.
-- [ ] Add a helper `requireUser(role?)` for server actions and pages.
+- [x] ~~Add Better Auth~~ Own session auth with email and password. Store sessions in Postgres. See ADR 0002.
+- [x] Sign-up form collects the ERD User fields. `year_level` is required for students and null for faculty.
+- [x] Add a helper `requireUser(role?)` for server actions and pages.
 
 Done when: tests prove that a non-admin cannot call an admin action, and a signed-out user is redirected from booking pages.
 
 ### 5. Booking — `tests: first`
-- [ ] Server action: check availability for a space and a time.
-- [ ] Server action: create a reservation. Check limits, capacity, and overlap. Price it with task 3. Write the reservation and its charges in one transaction.
-- [ ] Server actions: cancel, check in, add and remove participants, mark attendance.
-- [ ] Map the overlap constraint error to a clear message.
+- [x] Server action: check availability for a space and a time.
+- [x] Server action: create a reservation. Check limits, capacity, and overlap. Price it with task 3. Write the reservation and its charges in one transaction.
+- [x] Server actions: cancel, check in, add and remove participants, mark attendance.
+- [x] Map the overlap constraint error to a clear message.
 
 Done when: tests cover each rule in OPEN QUESTIONS 5–8, and a race test (two parallel creates) gives exactly one booking.
 
 ### 6. Payments — `tests: first`
-- [ ] Admin server action: record a payment (amount, method, reference, received by). Void a payment.
-- [ ] Balance = `total_amount` − sum of `paid` payments. Refuse a payment above the balance.
+- [x] Admin server action: record a payment (amount, method, reference, received by). Void a payment.
+- [x] Balance = `total_amount` − sum of `paid` payments. Refuse a payment above the balance.
 
 Done when: tests cover partial payment, full payment, overpayment refused, and void.
 
