@@ -18,6 +18,19 @@ Each question has a default. Execute uses the default if the human does not answ
 8. **Cancellation.** Default: the user can cancel before `start_at`. A cancelled booking keeps its charges for the record but owes nothing.
 9. **Enums.** Default values as in the study (reservation, payment method, payment status).
 
+## OPEN QUESTIONS, ROUND 2 (from `/impeccable init`, 2026-10-27)
+
+The human said: several staff run the app, and **users pay ahead**. This replaces the answers to questions 5 and 6. It changes money logic, so it needs approval and an ADR before code changes. Execute is stopped here.
+
+10. **Hold.** Default: a new booking is `pending`. It holds the slot (the overlap constraint already counts `pending`).
+11. **Deadline.** Default: the user must submit payment within 24 hours of booking, or by 2 hours before start, whichever is earlier. After that, the booking is cancelled automatically and the slot is free. A booking made less than 2 hours before start is refused.
+12. **Submit payment.** Default: the user submits the full total, the method (e-wallet or bank transfer), and the reference number. This makes a payment with status `pending`. No partial payments from users.
+13. **Verify.** Default: any admin checks the reference and marks the payment `paid`. `received_by` is that admin, and the time is recorded. When the paid total equals the booking total, the booking becomes `confirmed`. An admin can also reject a payment (`voided`) with a reason; the user can then submit again before the deadline. `received_by` becomes nullable until verification.
+14. **Cash.** Default: an admin can still record a cash payment at the office as `paid` at once.
+15. **Check-in.** Default: only a `confirmed` (fully paid) booking can be checked in.
+16. **Cancellation and refunds.** Default: a user can cancel a `pending` booking at any time before start. A paid (`confirmed`) booking can be cancelled only by an admin. The admin handles any refund outside the app, and the app records "refunded outside the app" with a note. No refund amounts are modelled.
+17. **Brand assets.** Ateneo de Manila branding is binding. Default: the UI uses neutral tokens until the official logo and brand guide are placed in `doc/canonical/brand/`. Nobody draws or guesses the logo or official colors.
+
 ## DECISIONS DURING EXECUTE
 
 - OPEN QUESTIONS 1–9: the human said "go". All defaults apply.
@@ -79,7 +92,7 @@ Done when: tests cover each rule in OPEN QUESTIONS 5–8, and a race test (two p
 Done when: tests cover partial payment, full payment, overpayment refused, and void.
 
 ### 7. Design study — design pass
-- [ ] Run `/impeccable init` to write PRODUCT.md. The human answers its questions.
+- [x] Run `/impeccable init` to write PRODUCT.md. The human answers its questions.
 - [ ] Run `/impeccable shape` for the booking flow. Record the surfaces below as the brief.
 
 Done when: PRODUCT.md exists and the shape brief lists each surface.
