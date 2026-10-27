@@ -121,7 +121,7 @@ Done when: a browser probe signs in as the seeded student, books a space across 
 - [x] Design review: impeccable finish reviewer instead of separate critique/audit/polish (the new-work flow). Round 1 `fix` (8 material fixes), round 2 all 8 resolved plus one copy regression, round 3 `ship` on the scored fixes. `impeccable detect`: no findings.
 - [ ] `break-ui`: not run as a skill. Edge states probed instead (closed day, empty list, rejected, cancelled, sign-in error). Long names and long text not tested.
 - [x] Browser probe (Playwright, dev server, seeded data), 13/13 pass, no console errors: signed-out redirect; student books A 28 Oct 16:00–18:00, footer quotes ₱350; review shows 2 charges (₱150 off-peak + ₱200 peak); booking waits for payment; reference GC-778812 shows as being checked; staff queue lists it; staff verify; booking confirmed with balance ₱0.00; faculty sees A taken; faculty cannot open /admin. State probe 9/9 pass.
-- [ ] Merge to main locally.
+- [x] Merge to main locally (fast-forward, 2026-10-27).
 ## Sync docs
 - [x] Update `doc/wiki/spec.md` with the answered questions. Remove them from its open questions.
 - [x] Write `doc/wiki/architecture.md`.
