@@ -23,23 +23,30 @@ for (const { password, ...person } of people) {
   await db.insert(users).values({ ...person, passwordHash: await hashPassword(password) });
 }
 
-await db.insert(spaces).values([
-  { code: "A", name: "Build Room A", spaceType: "build", capacity: 12 },
-  { code: "B", name: "Build Room B", spaceType: "build", capacity: 12 },
-  { code: "C", name: "Meeting Room C", spaceType: "meeting", capacity: 8 },
-  { code: "D", name: "Meeting Room D", spaceType: "meeting", capacity: 20 },
-]);
+const [, , , tableD] = await db
+  .insert(spaces)
+  .values([
+    { code: "A", name: "Table A", spaceType: "build", capacity: 4 },
+    { code: "B", name: "Table B", spaceType: "build", capacity: 4 },
+    { code: "C", name: "Table C", spaceType: "build", capacity: 4 },
+    { code: "D", name: "Conference Table D", spaceType: "meeting", capacity: 8 },
+  ])
+  .returning();
 
-// Monday to Friday: off-peak until 17:00, peak until 22:00. Saturday: one flat rate.
-// Sunday has no rate, so the spaces are closed.
-const weekdays = ["mon", "tue", "wed", "thu", "fri"] as const;
-await db.insert(rates).values([
-  ...weekdays.flatMap((day) => [
-    { dayOfWeek: day, startTime: "07:00", endTime: "17:00", hourlyRate: "150.00", effectiveFrom: "2026-01-01" },
-    { dayOfWeek: day, startTime: "17:00", endTime: "22:00", hourlyRate: "200.00", isPeak: true, effectiveFrom: "2026-01-01" },
-  ]),
-  { dayOfWeek: "sat" as const, startTime: "08:00", endTime: "18:00", hourlyRate: "120.00", effectiveFrom: "2026-01-01" },
-]);
+// Open Monday to Saturday, 08:00–20:00. Peak is 12:00–14:00. Sunday has no
+// rate, so the tables are closed. Tables A–C use the all-spaces rates; table D
+// has its own, which win by precedence (doc/wiki/footguns/rate-precedence.md).
+const openDays = ["mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const day = (spaceId: number | null, offPeak: string, peak: string) =>
+  openDays.flatMap((dayOfWeek) => [
+    { spaceId, dayOfWeek, startTime: "08:00", endTime: "12:00", hourlyRate: offPeak, effectiveFrom: "2026-01-01" },
+    { spaceId, dayOfWeek, startTime: "12:00", endTime: "14:00", hourlyRate: peak, isPeak: true, effectiveFrom: "2026-01-01" },
+    { spaceId, dayOfWeek, startTime: "14:00", endTime: "20:00", hourlyRate: offPeak, effectiveFrom: "2026-01-01" },
+  ]);
+const seeded = await db
+  .insert(rates)
+  .values([...day(null, "250.00", "500.00"), ...day(tableD.spaceId, "1250.00", "2000.00")])
+  .returning();
 
 await pool.end();
-console.log("Seeded 3 users, 4 spaces, 11 rates.");
+console.log(`Seeded 3 users, 4 tables, ${seeded.length} rates.`);

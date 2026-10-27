@@ -25,7 +25,8 @@ Prices come from a rate table with peak and off-peak windows, day-specific rates
 
 ## Operating Context
 
-- Four spaces: A and B (build rooms, capacity 12), C and D (meeting rooms, capacities 8 and 20). Seed values; staff can change them.
+- Four tables: A, B, and C seat 4; D is a conference table for 8. Open Monday to Saturday, 08:00–20:00; closed Sunday.
+- Rates: peak is 12:00–14:00. Tables A–C cost ₱250 per hour off-peak and ₱500 at peak. Table D costs ₱1,250 per hour off-peak and ₱2,000 at peak. These are the seed values (human-supplied, 2026-10-27); staff can change them in the app.
 - Users pay ahead by e-wallet or bank transfer and enter the reference number. Staff check the reference and confirm. Staff can also record a cash payment at the office.
 - A booking can list participants, including people from outside the school.
 - Time zone Asia/Manila. Currency Philippine peso (₱).
