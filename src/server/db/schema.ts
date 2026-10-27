@@ -16,7 +16,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Tables follow doc/canonical/erd.png. Additions: users.password_hash,
-// the sessions table, and the admin role (doc/adr/0001-admin-role.md).
+// the sessions table, the admin role (doc/adr/0001-admin-role.md), and the
+// pay-ahead columns (doc/adr/0003-pay-ahead.md).
 
 export const userRole = pgEnum("user_role", ["student", "faculty", "admin"]);
 export const spaceType = pgEnum("space_type", ["build", "meeting"]);
@@ -125,6 +126,10 @@ export const reservations = pgTable(
     createdAt: tstz("created_at").notNull().defaultNow(),
     checkedInAt: tstz("checked_in_at"),
     cancelledAt: tstz("cancelled_at"),
+    // Pay ahead (ADR 0003): a pending booking without a submitted payment
+    // is cancelled at this time.
+    paymentDueAt: tstz("payment_due_at"),
+    cancelReason: text("cancel_reason"),
   },
   (t) => [
     check("reservations_time_valid", sql`${t.endAt} > ${t.startAt}`),
@@ -173,8 +178,12 @@ export const payments = pgTable(
     method: paymentMethod("method").notNull(),
     referenceNo: text("reference_no"),
     status: paymentStatus("status").notNull(),
+    submittedAt: tstz("submitted_at"),
+    // Set when staff verify or record the payment.
     paidAt: tstz("paid_at"),
-    receivedBy: text("received_by").notNull(),
+    receivedBy: text("received_by"),
+    // Staff reason when a payment is rejected or voided.
+    note: text("note"),
   },
   (t) => [check("payments_amount_positive", sql`${t.amount} > 0`)],
 );

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { parseOrThrow, requireRole, type Actor } from "./accounts";
 import type { Db } from "./db";
@@ -24,7 +24,34 @@ export const RULES = {
   maxMinutes: 8 * 60,
   maxDaysAhead: 30,
   checkInEarlyMinutes: 15,
+  payWithinHours: 24,
+  payBeforeStartHours: 2,
 };
+
+const HOUR = 3_600_000;
+
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+// Pay ahead (ADR 0003): 24 h after booking or 2 h before start, whichever is earlier.
+export function paymentDueAt(now: Date, start: Date): Date {
+  return new Date(Math.min(now.getTime() + RULES.payWithinHours * HOUR, start.getTime() - RULES.payBeforeStartHours * HOUR));
+}
+
+// Cancel pending bookings past their deadline with no submitted or paid payment.
+// Runs before booking reads and writes, so no background job is needed.
+export async function expireOverdue(db: Db | Tx, now: Date) {
+  await db
+    .update(reservations)
+    .set({ status: "cancelled", cancelledAt: now, cancelReason: "Payment was not received by the deadline" })
+    .where(
+      and(
+        eq(reservations.status, "pending"),
+        lte(reservations.paymentDueAt, now),
+        sql`not exists (select 1 from ${payments} where ${payments.reservationId} = ${reservations.reservationId}
+          and ${payments.status} in ('pending', 'paid'))`,
+      ),
+    );
+}
 
 // Statuses that hold a slot. Keep in step with drizzle/0001_reservation_overlap.sql.
 export const ACTIVE_STATUSES = ["pending", "confirmed", "checked_in"] as const;
@@ -64,6 +91,9 @@ async function validateBooking(db: Db, raw: unknown, now: Date) {
   const start = atLocal(input.date, input.startTime);
   const end = atLocal(input.date, input.endTime);
   if (start <= now) throw new AppError("IN_PAST", "Choose a start time in the future");
+  if (start.getTime() - now.getTime() < RULES.payBeforeStartHours * HOUR) {
+    throw new AppError("TOO_SOON", "Book at least 2 hours ahead, so there is time to pay");
+  }
   if (start.getTime() > now.getTime() + RULES.maxDaysAhead * 86_400_000) {
     throw new AppError("TOO_FAR_AHEAD", "You can book at most 30 days ahead");
   }
@@ -102,6 +132,7 @@ export async function quoteReservation(db: Db, actor: Actor | null, raw: unknown
 export async function createReservation(db: Db, actor: Actor | null, raw: unknown, now = new Date()) {
   const me = requireRole(actor);
   const v = await validateBooking(db, raw, now);
+  await expireOverdue(db, now);
   const slotTaken = () => new AppError("SLOT_TAKEN", `Space ${v.space.code} is already booked for part of this time`);
 
   // Early check for a clear message. The exclusion constraint is the real guard.
@@ -129,9 +160,10 @@ export async function createReservation(db: Db, actor: Actor | null, raw: unknow
           endAt: v.end,
           purpose: v.input.purpose,
           headcount: v.input.headcount,
-          status: "confirmed",
+          status: "pending",
           totalAmount: v.total,
           createdAt: now,
+          paymentDueAt: paymentDueAt(now, v.start),
         })
         .returning();
       await tx.insert(charges).values(
@@ -155,7 +187,7 @@ export async function createReservation(db: Db, actor: Actor | null, raw: unknow
 
 // The reservation, if the actor owns it or is an admin. NOT_FOUND otherwise, so
 // IDs of other users' bookings do not leak.
-async function loadOwned(db: Db, actor: Actor, reservationId: number): Promise<Reservation> {
+export async function loadOwned(db: Db | Tx, actor: Actor, reservationId: number): Promise<Reservation> {
   const [r] = await db.select().from(reservations).where(eq(reservations.reservationId, reservationId));
   if (!r || (r.userId !== actor.userId && actor.role !== "admin")) {
     throw new AppError("NOT_FOUND", "Reservation not found");
@@ -163,16 +195,35 @@ async function loadOwned(db: Db, actor: Actor, reservationId: number): Promise<R
   return r;
 }
 
-export async function cancelReservation(db: Db, actor: Actor | null, reservationId: number, now = new Date()) {
+// Users cancel their own unpaid bookings. Once money is involved, only staff
+// can cancel, and they record how the refund was handled.
+export async function cancelReservation(
+  db: Db,
+  actor: Actor | null,
+  reservationId: number,
+  now = new Date(),
+  note?: string,
+) {
   const me = requireRole(actor);
   const r = await loadOwned(db, me, reservationId);
   if (r.status !== "confirmed" && r.status !== "pending") {
     throw new AppError("BAD_STATUS", "Only an upcoming booking can be cancelled");
   }
   if (now >= r.startAt) throw new AppError("TOO_LATE", "A booking cannot be cancelled after it starts");
+  const moneyIn = await db.$count(
+    payments,
+    and(eq(payments.reservationId, reservationId), inArray(payments.status, ["pending", "paid"])),
+  );
+  if ((r.status === "confirmed" || moneyIn > 0) && me.role !== "admin") {
+    throw new AppError("STAFF_ONLY", "This booking has a payment. Ask the facility office to cancel it");
+  }
+  const reason = note?.trim() || null;
+  if (moneyIn > 0 && !reason) {
+    throw new AppError("REFUND_NOTE_REQUIRED", "Write how the payment was refunded");
+  }
   await db
     .update(reservations)
-    .set({ status: "cancelled", cancelledAt: now })
+    .set({ status: "cancelled", cancelledAt: now, cancelReason: reason })
     .where(eq(reservations.reservationId, reservationId));
 }
 
@@ -269,8 +320,9 @@ export function balanceOf(reservation: Pick<Reservation, "status" | "totalAmount
   return toCents(reservation.totalAmount) - paidCents;
 }
 
-export async function getReservationDetail(db: Db, actor: Actor | null, reservationId: number) {
+export async function getReservationDetail(db: Db, actor: Actor | null, reservationId: number, now = new Date()) {
   const me = requireRole(actor);
+  await expireOverdue(db, now);
   const reservation = await loadOwned(db, me, reservationId);
   const [space] = await db.select().from(spaces).where(eq(spaces.spaceId, reservation.spaceId));
   const [owner] = await db
@@ -321,8 +373,9 @@ function withBalance<T extends { reservation: Reservation; paid: string }>(rows:
   }));
 }
 
-export async function listMyReservations(db: Db, actor: Actor | null) {
+export async function listMyReservations(db: Db, actor: Actor | null, now = new Date()) {
   const me = requireRole(actor);
+  await expireOverdue(db, now);
   const rows = await db
     .select(listColumns)
     .from(reservations)
@@ -332,8 +385,9 @@ export async function listMyReservations(db: Db, actor: Actor | null) {
   return withBalance(rows);
 }
 
-export async function listAllReservations(db: Db, actor: Actor | null) {
+export async function listAllReservations(db: Db, actor: Actor | null, now = new Date()) {
   requireRole(actor, "admin");
+  await expireOverdue(db, now);
   const rows = await db
     .select({ ...listColumns, ownerFirst: users.firstName, ownerLast: users.lastName })
     .from(reservations)
@@ -344,8 +398,9 @@ export async function listAllReservations(db: Db, actor: Actor | null) {
 }
 
 // Active bookings for one space on one local date, for the day view.
-export async function getDayBookings(db: Db, actor: Actor | null, spaceId: number, date: string) {
+export async function getDayBookings(db: Db, actor: Actor | null, spaceId: number, date: string, now = new Date()) {
   requireRole(actor);
+  await expireOverdue(db, now);
   const dayStart = atLocal(date, "00:00");
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
   const rows = await db

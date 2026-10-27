@@ -33,14 +33,14 @@ Prices come from a rate table with peak and off-peak windows, day-specific rates
 ## Capabilities and Constraints
 
 - Built: sign-up and sign-in; booking with rules (half-hour slots, 1 to 8 hours, up to 30 days ahead); pricing by rate windows; cancellation; check-in; participants; staff payments, rates, and spaces.
-- Decided, not yet built: pay ahead. The exact flow (booking hold, deadline, verification, refunds) is an open question in `doc/plan/1793084649_reservation_mvp.md`.
+- Pay ahead (ADR 0003): a booking is held as pending until a staff member checks the payment reference. Unpaid bookings expire at a deadline. Refunds happen outside the app.
 - Terms: "space" (not room), "booking" in the UI for a reservation, "rate", "charge", "payment", "balance", "check in", "participant".
 - The data model is in `doc/canonical/erd.png`. Rules are in `doc/wiki/spec.md`.
 
 ## Brand Commitments
 
-- The app follows **Ateneo de Manila University** branding. This is binding.
-- The official logo, colors, and brand guide are **not in the repo yet**. Do not draw, trace, or approximate the logo or seal, and do not guess official color values. Use the product name "ReserBUILD" in text until the official assets arrive in `doc/canonical/brand/`.
+- The users are the Ateneo de Manila community, but the app uses **no Ateneo brand assets**. The human chose neutral colors (2026-10-27). Do not draw, trace, or approximate the university logo or seal, and do not use guessed official colors.
+- Product name: "ReserBUILD".
 
 ## Evidence on Hand
 

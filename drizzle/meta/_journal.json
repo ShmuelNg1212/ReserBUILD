@@ -15,6 +15,13 @@
       "when": 1793084934979,
       "tag": "0001_reservation_overlap",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793085581258,
+      "tag": "0002_pay_ahead",
+      "breakpoints": true
     }
   ]
 }
